@@ -1,60 +1,77 @@
 import 'dart:convert';
-
-import 'package:allen/secrets.dart';
 import 'package:http/http.dart' as http;
+import 'package:allen/secrets.dart';
 
 class OpenAIService {
   final List<Map<String, String>> messages = [];
 
-  Future<String> isArtPromptAPI(String prompt) async {
-    print('im in the prompt $prompt');
-    try {
-      final res = await http.post(
-        Uri.parse('https://api.openai.com/v1/chat/completions'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $openAIAPIKey',
-        },
-        body: jsonEncode({
-          "model": "gpt-3.5-turbo",
-          "messages": [
-            {
-              'role': 'user',
-              'content':
-                  'Does this message want to generate an AI picture, image, art or anything similar? $prompt . Simply answer with a yes or no.',
-            }
-          ],
-        }),
-      );
-      print(res.body);
-      if (res.statusCode == 200) {
-        String content =
-            jsonDecode(res.body)['choices'][0]['message']['content'];
-        content = content.trim();
+  Future<String> handleUserInput(String userInput) async {
+    String chatGPTResponse = await chatGPTAPI(userInput);
 
-        switch (content) {
-          case 'Yes':
-          case 'yes':
-          case 'Yes.':
-          case 'yes.':
-            final res = await dallEAPI(prompt);
-            return res;
-          default:
-            final res = await chatGPTAPI(prompt);
-            return res;
-        }
-      }
-      return 'An internal error occurred';
-    } catch (e) {
-      return e.toString();
+    if (shouldCallDallE(userInput)) {
+      String dallEResponse = await dallEAPI(userInput);
+      return dallEResponse;
+    } else {
+      return chatGPTResponse;
     }
   }
 
+  bool shouldCallDallE(String chatGPTResponse) {
+    String responseLower = chatGPTResponse.toLowerCase();
+
+    List<String> imageIndicators = [
+      'image of',
+      'picture of',
+      'visual representation',
+      'show me',
+      'illustration of',
+      'photo of',
+      'generate an image',
+      'create a picture',
+      'visualize',
+      'depict',
+      'image would help',
+      'graphic of',
+      'draw a picture',
+      'draw an image',
+      'draw a graphic',
+      'draw a visual',
+      'draw a diagram',
+      'draw a chart',
+      'draw a graph',
+      'draw a map',
+      'artistic representation',
+      'artistic depiction',
+      'artistic illustration',
+      'artistic image',
+      'artistic picture',
+      'artistic visual',
+      'artistic graphic',
+      'artistic diagram',
+      'creating an image',
+      'creating a picture',
+      'creating a graphic',
+      'creating a visual',
+      'to visualize',
+      'to depict',
+      'to illustrate',
+      'to draw',
+      'to create',
+      'to generate',
+    ];
+
+    for (String indicator in imageIndicators) {
+      if (responseLower.contains(indicator)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   Future<String> chatGPTAPI(String prompt) async {
-    messages.add({
-      'role': 'user',
-      'content': prompt,
-    });
+    messages.add({'role': 'user', 'content': prompt});
+
     try {
       final res = await http.post(
         Uri.parse('https://api.openai.com/v1/chat/completions'),
@@ -72,24 +89,19 @@ class OpenAIService {
         String content =
             jsonDecode(res.body)['choices'][0]['message']['content'];
         content = content.trim();
-
-        messages.add({
-          'role': 'assistant',
-          'content': content,
-        });
+        messages.add({'role': 'assistant', 'content': content});
         return content;
       }
       return 'An internal error occurred';
     } catch (e) {
-      return e.toString();
+      print('Error in chatGPTAPI: $e');
+      return 'An internal error occurred';
     }
   }
 
   Future<String> dallEAPI(String prompt) async {
-    messages.add({
-      'role': 'user',
-      'content': prompt,
-    });
+    messages.add({'role': 'user', 'content': prompt});
+
     try {
       final res = await http.post(
         Uri.parse('https://api.openai.com/v1/images/generations'),
@@ -100,23 +112,20 @@ class OpenAIService {
         body: jsonEncode({
           'prompt': prompt,
           'n': 1,
-          "size": "256x256"
+          'size': '256x256',
         }),
       );
 
       if (res.statusCode == 200) {
         String imageUrl = jsonDecode(res.body)['data'][0]['url'];
         imageUrl = imageUrl.trim();
-
-        messages.add({
-          'role': 'assistant',
-          'content': imageUrl,
-        });
+        messages.add({'role': 'assistant', 'content': imageUrl});
         return imageUrl;
       }
       return 'An internal error occurred';
     } catch (e) {
-      return e.toString();
+      print('Error in dallEAPI: $e');
+      return 'An internal error occurred';
     }
   }
 }
